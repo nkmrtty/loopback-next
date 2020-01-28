@@ -23,12 +23,13 @@ import {
 import {AssertionError} from 'assert';
 import cors from 'cors';
 import debugFactory from 'debug';
-import express from 'express';
+import express, {ErrorRequestHandler} from 'express';
 import {PathParams} from 'express-serve-static-core';
 import {IncomingMessage, ServerResponse} from 'http';
 import {ServerOptions} from 'https';
 import {safeDump} from 'js-yaml';
 import {ServeStaticOptions} from 'serve-static';
+import {writeErrorToResponse} from 'strong-error-handler';
 import {BodyParser, REQUEST_BODY_PARSER_TAG} from './body-parsers';
 import {HttpHandler} from './http-handler';
 import {RestBindings} from './keys';
@@ -236,11 +237,20 @@ export class RestServer extends Context implements Server, HttpServerLike {
     });
 
     // Mount our error handler
-    this._expressApp.use(
-      (err: Error, req: Request, res: Response, next: Function) => {
-        this._onUnhandledError(req, res, err);
-      },
-    );
+    const errorHandler: ErrorRequestHandler = (err, req, res, next) => {
+      // Handle errors reported by Express middleware such as CORS
+      // First try to use the `REJECT` action
+      this.get(SequenceActions.REJECT, {optional: true})
+        .then(reject => {
+          if (reject) {
+            return reject({request: req, response: res}, err);
+          }
+          // Use strong-error handler directly
+          writeErrorToResponse(err, req, res);
+        })
+        .catch(unexpectedErr => next(unexpectedErr));
+    };
+    this._expressApp.use(errorHandler);
   }
 
   /**
@@ -721,7 +731,9 @@ export class RestServer extends Context implements Server, HttpServerLike {
   }
 
   /**
-   * Update or rebuild OpenAPI Spec object to be appropriate for the context of a specific request for the spec, leveraging both app config and request path information.
+   * Update or rebuild OpenAPI Spec object to be appropriate for the context of
+   * a specific request for the spec, leveraging both app config and request
+   * path information.
    *
    * @param spec base spec object from which to start
    * @param requestContext request to use to infer path information
@@ -882,20 +894,6 @@ export class RestServer extends Context implements Server, HttpServerLike {
     if (!this._httpServer) return;
     await this._httpServer.stop();
     this._httpServer = undefined;
-  }
-
-  protected _onUnhandledError(req: Request, res: Response, err: Error) {
-    if (!res.headersSent) {
-      res.statusCode = 500;
-      res.end();
-    }
-
-    // It's the responsibility of the Sequence to handle any errors.
-    // If an unhandled error escaped, then something very wrong happened
-    // and it's best to crash the process immediately.
-    process.nextTick(() => {
-      throw err;
-    });
   }
 
   /**
