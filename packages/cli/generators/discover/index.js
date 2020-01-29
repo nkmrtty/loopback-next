@@ -181,6 +181,63 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
   }
 
   /**
+   * Prompts what naming convention they would like to have for column names.
+   */
+  promptColNamingConvention() {
+    this.namingConvention = {
+      'LoopBack default camelCase convention (Recommend)': false,
+      'keep property names the same as database column names': true,
+    };
+    return this.prompt([
+      {
+        name: 'disableCamelCase',
+        message: `Convert column names to property names:`,
+        type: 'list',
+        choices: Object.keys(this.namingConvention),
+        default: false,
+        when:
+          this.disableCamelCase === undefined &&
+          !this.artifactInfo.disableCamelCase,
+      },
+    ]).then(props => {
+      if (!props.disableCamelCase) return;
+      const key = props.disableCamelCase;
+      props.disableCamelCase = this.namingConvention[key];
+
+      Object.assign(this.artifactInfo, props);
+      debug(`props after naming convention prompt: ${props.disableCamelCase}`);
+      return props;
+    });
+  }
+
+  /**
+   * Warns about potential issues for non-LB-default property naming convention.
+   * The prcess can be aborted here.
+   */
+  promptConfirmDisable() {
+    if (!this.artifactInfo.disableCamelCase) {
+      return;
+    }
+    this.confirm = {Yes: true, 'No (abort process)': false};
+    return this.prompt([
+      {
+        name: 'confirm',
+        message: `You might need to specify these customized names in relation definition, do you want to continue?`,
+        type: 'list',
+        choices: Object.keys(this.confirm),
+        default: false,
+        when: this.disableCamelCase,
+      },
+    ]).then(props => {
+      if (!props.confirm) return;
+      if (!this.confirm[props.confirm]) {
+        /* istanbul ignore next */
+        return this.exit('Process aborted.');
+      }
+    });
+  }
+
+  /**
    * Using artifactInfo.dataSource,
    * artifactInfo.modelNameOptions
    *
@@ -189,6 +246,11 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
    * @returns {Promise<void>}
    */
   async getAllModelDefs() {
+    /* istanbul ignore next */
+    if (this.shouldExit()) {
+      await this.artifactInfo.dataSource.disconnect();
+      return false;
+    }
     this.artifactInfo.modelDefinitions = [];
     // eslint-disable-next-line @typescript-eslint/prefer-for-of
     for (let i = 0; i < this.discoveringModels.length; i++) {
@@ -198,7 +260,10 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
         await modelMaker.discoverSingleModel(
           this.artifactInfo.dataSource,
           modelInfo.name,
-          {schema: modelInfo.owner},
+          {
+            schema: modelInfo.owner,
+            disableCamelCase: this.artifactInfo.disableCamelCase,
+          },
         ),
       );
       debug(`Discovered: ${modelInfo.name}`);
@@ -209,11 +274,14 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
    * Iterate through all the models we have discovered and scaffold
    */
   async scaffold() {
+    // Exit if needed
+    /* istanbul ignore next */
+    if (this.shouldExit()) {
+      await this.artifactInfo.dataSource.disconnect();
+      return false;
+    }
     this.artifactInfo.indexesToBeUpdated =
       this.artifactInfo.indexesToBeUpdated || [];
-
-    // Exit if needed
-    if (this.shouldExit()) return false;
 
     // eslint-disable-next-line @typescript-eslint/prefer-for-of
     for (let i = 0; i < this.artifactInfo.modelDefinitions.length; i++) {
