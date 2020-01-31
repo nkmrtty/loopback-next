@@ -196,7 +196,7 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
    */
   promptColNamingConvention() {
     this.namingConvention = {
-      'LoopBack default camelCase convention (Recommend)': false,
+      'LoopBack default camelCase convention (Recommended)': false,
       'keep property names the same as database column names': true,
     };
     return this.prompt([
@@ -206,9 +206,6 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
         type: 'list',
         choices: Object.keys(this.namingConvention),
         default: false,
-        when:
-          this.disableCamelCase === undefined &&
-          !this.artifactInfo.disableCamelCase,
       },
     ]).then(props => {
       /* istanbul ignore next */
@@ -218,13 +215,13 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
 
       Object.assign(this.artifactInfo, props);
       debug(`props after naming convention prompt: ${props.disableCamelCase}`);
-      return props;
+      return this.promptConfirmDisable();
     });
   }
 
   /**
    * Warns about potential issues for non-LB-default property naming convention.
-   * The prcess can be aborted here.
+   * Users could decide to back to the previous step here.
    */
   promptConfirmDisable() {
     /* istanbul ignore next */
@@ -233,7 +230,7 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
     }
     this.confirm = {
       Yes: true,
-      'No (abort process)': false,
+      'No (back to the previous step)': false,
     };
     return this.prompt([
       {
@@ -242,14 +239,14 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
         type: 'list',
         choices: Object.keys(this.confirm),
         default: false,
-        when: this.disableCamelCase,
+        when: this.artifactInfo.disableCamelCase,
       },
     ]).then(props => {
       /* istanbul ignore next */
       if (!props.confirm) return;
       /* istanbul ignore next */
       if (!this.confirm[props.confirm]) {
-        return this.exit('Process aborted.');
+        return this.promptColNamingConvention();
       }
     });
   }
@@ -295,7 +292,7 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
     /* istanbul ignore next */
     if (this.shouldExit()) {
       await this.artifactInfo.dataSource.disconnect();
-      return false;
+      return;
     }
     this.artifactInfo.indexesToBeUpdated =
       this.artifactInfo.indexesToBeUpdated || [];
