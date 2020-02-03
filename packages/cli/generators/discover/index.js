@@ -195,23 +195,23 @@ module.exports = class DiscoveryGenerator extends ArtifactGenerator {
    * Prompts what naming convention they would like to have for column names.
    */
   promptColNamingConvention() {
-    this.namingConvention = {
-      'LoopBack default camelCase convention (Recommended)': false,
-      'keep property names the same as database column names': true,
-    };
+    this.namingConvention = [
+      'Camel case (exampleColumn) (Recommended)',
+      'No conversion (EXAMPLE_COLUMN)',
+    ];
     return this.prompt([
       {
         name: 'disableCamelCase',
-        message: `Convert column names to property names:`,
+        message: `Select a convention to convert db column names(EXAMPLE_COLUMN) to model property names:`,
         type: 'list',
-        choices: Object.keys(this.namingConvention),
+        choices: this.namingConvention,
         default: false,
       },
     ]).then(props => {
       /* istanbul ignore next */
       if (!props.disableCamelCase) return;
-      const key = props.disableCamelCase;
-      props.disableCamelCase = this.namingConvention[key];
+      props.disableCamelCase =
+        props.disableCamelCase !== 'Camel case (exampleColumn) (Recommended)';
 
       Object.assign(this.artifactInfo, props);
       debug(`props after naming convention prompt: ${props.disableCamelCase}`);
